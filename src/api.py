@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic import BaseModel
+from src.tracker import log_rag_run
 from src.rag_pipeline import build_rag_chain, query_rag
 
 load_dotenv()
@@ -30,6 +31,12 @@ def health_check():
 @app.post("/ask", response_model= AnswerResponse)
 def ask_question(request: QuestionRequest):
     result= query_rag(request.question, chain)
+    log_rag_run(
+        question=result["question"],
+        answer=result["answer"],
+        latency=result["latency_seconds"],
+        sources_used=len(result["source_documents"])
+    )
     return AnswerResponse(
         question=result["question"],
         answer=result["answer"],
