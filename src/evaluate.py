@@ -5,10 +5,11 @@ from deepeval.metrics import FaithfulnessMetric, AnswerRelevancyMetric
 from deepeval.test_case import LLMTestCase
 from langchain_groq import ChatGroq
 from src.rag_pipeline import build_rag_chain, query_rag
+from deepeval.models import DeepEvalBaseLLM
 
 load_dotenv()
 
-from deepeval.models import DeepEvalBaseLLM
+
 
 class GroqJudge(DeepEvalBaseLLM):
     def __init__(self):
