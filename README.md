@@ -1,8 +1,8 @@
 # RAG Financial Q&A System
 
-> Ask natural language questions over financial documents — powered by LangChain, FAISS, Groq (Llama 3.1), FastAPI, MLflow, and Docker.
+> Ask natural language questions over financial documents — powered by LangChain, FAISS, Groq (Llama 3.1), FastAPI, MLflow, DeepEval, and Docker.
 
-![CI](https://github.com/YOUR_USERNAME/rag-financial-qa/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Arin36/rag-financial-qa/actions/workflows/ci.yml/badge.svg)
 
 ---
 
@@ -33,26 +33,28 @@ Query → Embed → Retrieve top-5 chunks → Groq LLaMA 3.1 → Answer
 
 | Layer | Tool |
 |---|---|
-| LLM | Groq (Llama 3.1 8B) — free |
+| LLM | Groq (Llama 3.1 8B Instant) — free |
+| Judge LLM | Groq (Llama 3.3 70B Versatile) — used for evaluation |
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 — local, free |
 | Vector DB | FAISS — local, free |
-| Orchestration | LangChain |
+| Orchestration | LangChain (LCEL) |
 | API | FastAPI + Uvicorn |
-| Experiment Tracking | MLflow |
-| Evaluation | RAGAS |
-| Containerisation | Docker + docker-compose |
+| Experiment Tracking | MLflow (SQLite backend) |
+| Evaluation | DeepEval (Faithfulness + Answer Relevancy) |
+| Containerisation | Docker |
 | CI/CD | GitHub Actions |
-| Cloud | AWS (ECR + EC2/SageMaker) |
 
 ---
 
-## Evaluation Results (RAGAS)
+## Evaluation Results (DeepEval)
 
-| Metric | Score |
-|---|---|
-| Faithfulness | TBD |
-| Answer Relevancy | TBD |
-| Context Precision | TBD |
+| Metric | Score | Threshold | Status |
+|---|---|---|---|
+| Faithfulness | 1.00 | 0.70 | ✅ Pass |
+| Answer Relevancy | 0.92 | 0.70 | ✅ Pass |
+
+Evaluated on 3 financial questions across NVIDIA and Tesla documents.
+Judge model: Groq Llama 3.3 70B Versatile (LLM-as-a-judge pattern).
 
 ---
 
@@ -60,7 +62,7 @@ Query → Embed → Retrieve top-5 chunks → Groq LLaMA 3.1 → Answer
 
 ```bash
 # 1. Clone and enter
-git clone https://github.com/YOUR_USERNAME/rag-financial-qa.git
+git clone https://github.com/Arin36/rag-financial-qa.git
 cd rag-financial-qa
 
 # 2. Set up environment
@@ -74,15 +76,21 @@ cp .env.example .env
 
 # 4. Add financial PDFs to data/raw/
 # Then build the index:
-python src/ingestion.py
+python -m src.ingestion
 
-# 5. Run everything with Docker
-docker compose up
+# 5. Run the API
+uvicorn src.api:app --reload
 ```
 
 API available at: `http://localhost:8000`
-MLflow UI at: `http://localhost:5000`
 API docs at: `http://localhost:8000/docs`
+
+### Run with Docker
+
+```bash
+docker build -t rag-financial-qa .
+docker run -p 8000:8000 --env-file .env rag-financial-qa
+```
 
 ---
 
@@ -90,28 +98,56 @@ API docs at: `http://localhost:8000/docs`
 
 ```
 rag-financial-qa/
-├── .github/workflows/ci.yml   # GitHub Actions CI
+├── .github/workflows/ci.yml   # GitHub Actions CI — lint + docker build
 ├── data/
-│   └── raw/                   # Your PDFs (gitignored)
+│   ├── raw/                   # Your PDFs (gitignored)
+│   └── faiss_index/           # Built FAISS vector index
 ├── src/
-│   ├── ingestion.py           # Load, chunk, embed, index
-│   ├── retriever.py           # FAISS retrieval
-│   ├── rag_pipeline.py        # Full RAG chain
-│   ├── api.py                 # FastAPI app
-│   ├── tracker.py             # MLflow logging
-│   └── evaluate.py            # RAGAS evaluation
-├── tests/
-├── Dockerfile
-├── docker-compose.yml
-└── requirements.txt
+│   ├── ingestion.py           # Load PDFs, chunk, embed, save FAISS index
+│   ├── retriever.py           # Load FAISS index, similarity search
+│   ├── rag_pipeline.py        # LCEL chain: retriever → prompt → Groq LLM
+│   ├── api.py                 # FastAPI endpoints: GET /health, POST /ask
+│   ├── tracker.py             # MLflow experiment tracking
+│   └── evaluate.py            # DeepEval evaluation pipeline
+├── Dockerfile                 # Container definition (Python 3.11-slim)
+├── .dockerignore              # Excludes venv, .env, raw PDFs from image
+├── .env.example               # Environment variable template
+└── requirements.txt           # Python dependencies
 ```
 
 ---
 
-## Running Tests
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Health check — returns `{"status": "ok"}` |
+| POST | `/ask` | Ask a question, get an answer from your PDFs |
+
+Example request:
+```json
+POST /ask
+{
+  "question": "What was NVIDIA's total revenue?"
+}
+```
+
+Example response:
+```json
+{
+  "question": "What was NVIDIA's total revenue?",
+  "answer": "$215,938 million for the year ended Jan 25, 2026.",
+  "latency_seconds": 0.411,
+  "sources_used": 5
+}
+```
+
+---
+
+## Running Evaluation
 
 ```bash
-pytest tests/ -v
+python -m src.evaluate
 ```
 
 ---
